@@ -1,0 +1,1104 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FAB Proxy Order Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
+<style>
+/* Layout: search and card list on the left, sticky order panel on the right; stacks on phones. */
+:root {
+  --bg: #f3f1ee; --surface: #ffffff; --sunk: #ebe7e2; --fg: #1f1c1a; --muted: #6b635c; --line: #d9d3cc;
+  --accent: #8a5a1c; --accent-fg: #ffffff; --accent-soft: #f2e6d4;
+  --pitch-red: #c23b2e; --pitch-yellow: #d4a414; --pitch-blue: #2f63b8;
+  --warn: #9a5b00; --warn-soft: #fbefd9; --bad: #b3261e; --bad-soft: #fbe3e1; --good: #2e7d4f;
+  --shadow: 0 12px 32px rgba(40, 28, 14, .18);
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #181614; --surface: #221f1c; --sunk: #2b2724; --fg: #f1ece6; --muted: #a79d93; --line: #3a3530;
+    --accent: #d9a35a; --accent-fg: #1d1408; --accent-soft: #3a2c1a;
+    --pitch-red: #e2685c; --pitch-yellow: #e8c14a; --pitch-blue: #6f9be6;
+    --warn: #e9b25c; --warn-soft: #3a2c14; --bad: #f08a82; --bad-soft: #3d1f1c; --good: #6cc496;
+    --shadow: 0 12px 32px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+.wrap { max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.1; text-wrap: balance; margin: 0; letter-spacing: .01em; }
+h1 { font-size: clamp(2rem, 5vw, 2.8rem); font-weight: 700; }
+h2 { font-size: 1.45rem; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 64ch; margin-top: 6px; }
+
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; list-style: none; padding: 0; margin: 0; }
+.steps li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
+.steps .n { font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; line-height: 1; color: var(--accent); }
+.steps b { display: block; }
+.steps span { color: var(--muted); font-size: .92rem; }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; align-items: start; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+aside.panel { position: sticky; top: 16px; }
+
+button { font: inherit; font-weight: 700; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); padding: 9px 16px; cursor: pointer; line-height: 1.2; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .opt:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.primary:hover { filter: brightness(1.08); }
+button.primary:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+button.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 6px 10px; font-weight: 400; }
+button.ghost:hover { color: var(--fg); border-color: var(--line); }
+button.big { font-size: 1.1rem; padding: 14px 18px; width: 100%; }
+.linkish { background: none; border: none; padding: 0; color: var(--accent); font-weight: 700; font-size: .86rem; text-decoration: underline; text-underline-offset: 2px; }
+.linkish:hover { border: none; }
+
+/* Search */
+.search { position: relative; }
+.search label { font-family: var(--font-display); font-size: 1.35rem; font-weight: 600; display: block; margin-bottom: 8px; }
+.search input { width: 100%; font: inherit; font-size: 1.15rem; padding: 14px 16px; border-radius: var(--radius); border: 2px solid var(--line); background: var(--surface); color: var(--fg); }
+.search input:focus { border-color: var(--accent); outline: none; }
+.search .hint { margin-top: 6px; }
+.results { position: absolute; left: 0; right: 0; top: 100%; z-index: 20; margin-top: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); display: grid; grid-template-columns: minmax(0, 1fr) 220px; overflow: hidden; }
+.results ul { list-style: none; margin: 0; padding: 6px; max-height: 440px; overflow-y: auto; }
+.opt { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.opt img { width: 34px; aspect-ratio: 63/88; object-fit: cover; border-radius: 3px; background: var(--sunk); }
+.opt .t { min-width: 0; }
+.opt .nm { font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.opt .nm span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt .ty { color: var(--muted); font-size: .84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opt .add { font-size: .84rem; color: var(--muted); }
+.opt.active { background: var(--accent-soft); }
+.opt.active .add { color: var(--accent); font-weight: 700; }
+.noresult { padding: 14px; color: var(--muted); }
+.peek { background: var(--sunk); padding: 12px; display: flex; flex-direction: column; gap: 8px; align-items: center; justify-content: flex-start; }
+.peek img { width: 100%; aspect-ratio: 63/88; object-fit: contain; border-radius: 8px; }
+.peek p { font-size: .82rem; color: var(--muted); text-align: center; }
+
+.altadd { display: flex; flex-wrap: wrap; gap: 10px; }
+.altadd > div { flex: 1 1 260px; min-width: 0; }
+details.box { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; background: var(--sunk); }
+details.box summary { cursor: pointer; font-weight: 700; }
+details.box[open] summary { margin-bottom: 10px; }
+details.box textarea { width: 100%; min-height: 150px; font: inherit; font-size: .95rem; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); resize: vertical; }
+details.box .row { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.drop { border: 2px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; transition: border-color .15s, background .15s; }
+.drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.drop p { color: var(--muted); font-size: .92rem; }
+.report { font-size: .9rem; display: flex; flex-direction: column; gap: 4px; }
+.report .bad { color: var(--bad); }
+.report .warn { color: var(--warn); }
+.report ul { margin: 0; padding-left: 1.2em; }
+
+.listhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.listhead .meta { color: var(--muted); font-size: .92rem; }
+.examplenote { background: var(--accent-soft); border-radius: 8px; padding: 10px 14px; font-size: .95rem; display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+.cards { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.card { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: 14px; align-items: center; border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; background: var(--surface); }
+.card.fail { border-color: var(--bad); }
+.thumbs { position: relative; width: 64px; padding: 0; border: none; background: none; cursor: zoom-in; border-radius: 4px; }
+.thumb { width: 64px; aspect-ratio: 63/88; object-fit: cover; border-radius: 4px; display: block; background: var(--sunk); }
+.thumbs .backthumb { position: absolute; right: -8px; bottom: -6px; width: 30px; border: 2px solid var(--surface); border-radius: 3px; }
+.info { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.namerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pip { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.pip.p1 { background: var(--pitch-red); } .pip.p2 { background: var(--pitch-yellow); } .pip.p3 { background: var(--pitch-blue); }
+.name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sub { color: var(--muted); font-size: .86rem; display: flex; gap: 6px 12px; flex-wrap: wrap; align-items: center; }
+.flag { font-size: .8rem; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); }
+.flag.bad { background: var(--bad-soft); color: var(--bad); }
+.controls { display: flex; align-items: center; gap: 8px; }
+.qty { display: flex; align-items: center; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.qty button { border: none; border-radius: 0; padding: 8px 12px; font-size: 1.1rem; background: var(--sunk); }
+.qty input { width: 48px; text-align: center; border: none; background: var(--surface); color: var(--fg); font: inherit; font-weight: 700; padding: 8px 0; font-variant-numeric: tabular-nums; -moz-appearance: textfield; }
+.qty input::-webkit-outer-spin-button, .qty input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.remove { font-size: 1.2rem; line-height: 1; padding: 6px 10px; }
+.empty { text-align: center; color: var(--muted); padding: 18px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.label { font-family: var(--font-display); font-size: .95rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); width: 100%; }
+.check { display: flex; gap: 10px; align-items: center; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.backpick { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; align-items: center; }
+.backpick img { width: 56px; aspect-ratio: 63/88; object-fit: cover; border-radius: 4px; background: var(--sunk); }
+.backpick .acts { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 0; }
+.backpick .acts span { font-size: .9rem; color: var(--muted); overflow-wrap: anywhere; }
+.totals { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.tot { background: var(--sunk); border-radius: 8px; padding: 10px 12px; }
+.tot .v { font-family: var(--font-display); font-size: 1.9rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.tot .k { font-size: .85rem; color: var(--muted); }
+.bar { height: 8px; background: var(--sunk); border-radius: 99px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s; }
+.hint { font-size: .88rem; color: var(--muted); }
+.msgs { display: flex; flex-direction: column; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.msgs li { font-size: .9rem; border-radius: 8px; padding: 8px 12px; }
+.msgs .warn { background: var(--warn-soft); color: var(--warn); }
+.msgs .bad { background: var(--bad-soft); color: var(--bad); font-weight: 700; }
+.status { font-size: .92rem; min-height: 1.4em; }
+.status.ok { color: var(--good); font-weight: 700; }
+.status.err { color: var(--bad); font-weight: 700; }
+.progress { height: 6px; background: var(--sunk); border-radius: 99px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--good); width: 0; transition: width .2s; }
+.dbline { font-size: .84rem; color: var(--muted); display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.guide ol { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 10px; max-width: 72ch; }
+.guide li::marker { font-family: var(--font-display); font-weight: 700; color: var(--accent); }
+.guide a { color: var(--accent); font-weight: 700; }
+.guide code { background: var(--sunk); padding: 1px 6px; border-radius: 4px; font-size: .92em; }
+.guide details { border-top: 1px solid var(--line); padding-top: 12px; }
+.guide summary { cursor: pointer; font-weight: 700; }
+.guide details[open] summary { margin-bottom: 10px; }
+.guide details ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; max-width: 72ch; color: var(--muted); }
+
+/* Modal */
+.modal { position: fixed; inset: 0; z-index: 50; background: rgba(15, 12, 10, .62); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.sheet { background: var(--surface); color: var(--fg); border-radius: 14px; box-shadow: var(--shadow); max-width: 920px; width: 100%; max-height: calc(100vh - 40px); overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+.sheet header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.artgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.artopt { display: flex; flex-direction: column; gap: 6px; padding: 8px; border: 2px solid var(--line); border-radius: 10px; background: var(--surface); text-align: left; font-weight: 400; }
+.artopt img { width: 100%; aspect-ratio: 63/88; object-fit: cover; border-radius: 6px; background: var(--sunk); }
+.artopt span { font-size: .84rem; color: var(--muted); }
+.artopt.sel { border-color: var(--accent); background: var(--accent-soft); }
+.bigview { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+.bigview img { width: min(380px, 100%); aspect-ratio: 63/88; object-fit: contain; border-radius: 12px; }
+
+@media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } aside.panel { position: static; } }
+@media (max-width: 640px) {
+  .steps { grid-template-columns: minmax(0, 1fr); }
+  .results { grid-template-columns: minmax(0, 1fr); }
+  .peek { display: none; }
+  .card { grid-template-columns: 52px minmax(0, 1fr); }
+  .thumbs, .thumb { width: 52px; }
+  .controls { grid-column: 1 / -1; justify-content: space-between; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>FAB Proxy Order Builder</h1>
+    <p class="lede">Type a card name, pick the art, set how many. You get one zip with print-ready images and an order file for the MPC Autofill program.</p>
+  </header>
+
+  <ol class="steps" aria-label="How it works">
+    <li><span class="n">1</span><div><b>Find your cards</b><span>Type a name, or paste a decklist.</span></div></li>
+    <li><span class="n">2</span><div><b>Set how many</b><span>Use + and − on each card.</span></div></li>
+    <li><span class="n">3</span><div><b>Download and run</b><span>Unzip, add the Autofill program, double-click.</span></div></li>
+  </ol>
+
+  <div class="layout">
+    <main class="panel">
+      <div class="search" id="searchWrap">
+        <label for="q">Add a card</label>
+        <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Start typing, e.g. command and conquer" role="combobox" aria-expanded="false" aria-controls="resultList" aria-autocomplete="list">
+        <p class="hint">Press Enter to add the highlighted card. Add "red", "yellow" or "blue" to narrow by pitch.</p>
+        <div class="results" id="results" hidden>
+          <ul id="resultList" role="listbox"></ul>
+          <div class="peek" id="peek"><img id="peekImg" alt=""><p id="peekCap"></p></div>
+        </div>
+      </div>
+
+      <div class="altadd">
+        <div>
+          <details class="box" id="deckBox">
+            <summary>Paste a whole decklist</summary>
+            <textarea id="deckText" placeholder="One card per line, for example:&#10;3x Command and Conquer (red)&#10;(2) Sink Below (blue)&#10;Hero: Dorinthea Ironsong"></textarea>
+            <div class="row">
+              <button type="button" class="primary" id="deckAdd">Add these cards</button>
+              <span class="hint">Copied from Fabrary or most deck sites works.</span>
+            </div>
+            <div class="report" id="deckReport"></div>
+          </details>
+        </div>
+        <div>
+          <details class="box">
+            <summary>Use my own images instead</summary>
+            <div class="drop" id="drop">
+              <p>Drop PNG or JPG files here, named after the card.</p>
+              <button type="button" id="pickBtn">Choose images…</button>
+            </div>
+          </details>
+        </div>
+      </div>
+      <input type="file" id="pick" accept="image/png,image/jpeg,image/webp" multiple hidden>
+      <input type="file" id="pickOne" accept="image/png,image/jpeg,image/webp" hidden>
+
+      <div class="examplenote" id="exampleNote" hidden>
+        <span>These are <b>example cards</b> so you can see how it works. They disappear as soon as you add your own.</span>
+        <button class="ghost" type="button" id="clearExamples">Remove examples</button>
+      </div>
+
+      <div class="listhead">
+        <h2>Your cards</h2>
+        <div class="meta" id="listMeta"></div>
+      </div>
+      <ul class="cards" id="cards"></ul>
+      <div class="listhead" id="listFoot" hidden>
+        <button class="ghost" type="button" id="clearAll">Remove all cards</button>
+        <span id="confirmClear" hidden><span class="hint">Remove every card?</span> <button type="button" id="confirmYes">Yes, remove</button> <button class="ghost" type="button" id="confirmNo">Cancel</button></span>
+      </div>
+      <div class="dbline"><span id="dbInfo"></span><button type="button" class="linkish" id="dbUpdate">Check for new cards</button></div>
+    </main>
+
+    <aside class="panel" aria-label="Order">
+      <h2>Your order</h2>
+      <div class="totals">
+        <div class="tot"><div class="v" id="totCards">0</div><div class="k">cards to print</div></div>
+        <div class="tot"><div class="v" id="totBracket">18</div><div class="k">MPC price tier (up to)</div></div>
+      </div>
+      <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+      <p class="hint" id="bracketHint"></p>
+
+      <div class="field">
+        <span class="label">Back of the cards</span>
+        <div class="backpick">
+          <img id="cardbackImg" alt="Card back preview">
+          <div class="acts">
+            <span id="cardbackName">Plain dark back (built in)</span>
+            <button class="linkish" type="button" id="cardbackBtn">Use my own back image</button>
+            <button class="linkish" type="button" id="cardbackReset" hidden>Go back to the plain back</button>
+          </div>
+        </div>
+      </div>
+      <input type="file" id="pickCardback" accept="image/png,image/jpeg,image/webp" hidden>
+
+      <div class="field">
+        <label class="label" for="stock">Card stock</label>
+        <select id="stock">
+          <option value="(S30) Standard Smooth">Standard Smooth (S30), the usual choice</option>
+          <option value="(S33) Superior Smooth">Superior Smooth (S33), thicker</option>
+          <option value="(M31) Linen">Linen (M31), textured</option>
+          <option value="(P10) Plastic">Plastic (P10)</option>
+        </select>
+      </div>
+      <label class="check"><input type="checkbox" id="foil"> Holographic (foil) fronts</label>
+
+      <ul class="msgs" id="msgs"></ul>
+      <button class="primary big" type="button" id="download" disabled>Download order (.zip)</button>
+      <div class="progress" id="progress" hidden><i id="progressBar"></i></div>
+      <p class="status" id="status" role="status"></p>
+    </aside>
+  </div>
+
+  <section class="panel guide" aria-labelledby="guideH">
+    <h2 id="guideH">After you download</h2>
+    <ol>
+      <li><b>Unzip the file.</b> On Windows, right-click it and choose <i>Extract All</i>. You get a folder with <code>fab-order.xml</code> and a <code>card-images</code> folder inside.</li>
+      <li><b>Get the Autofill program</b> (one time only) from the <a href="https://github.com/chilli-axe/mpc-autofill/releases" target="_blank" rel="noopener">MPC Autofill releases page</a>. Download the file for your computer, e.g. <code>autofill-windows.exe</code>.</li>
+      <li><b>Move the Autofill program into the unzipped folder</b>, right next to <code>fab-order.xml</code>.</li>
+      <li><b>Double-click the Autofill program.</b> If Windows shows a blue "protected your PC" box, click <i>More info</i> then <i>Run anyway</i>. Choose <code>fab-order.xml</code> if it asks.</li>
+      <li><b>Let it work.</b> It opens Google Chrome and fills in the MakePlayingCards order for you. Don't click in that window until it says it has finished.</li>
+      <li><b>Check and pay.</b> Look over the cards on the MakePlayingCards page, then add to cart and check out yourself.</li>
+    </ol>
+    <details>
+      <summary>Tips and answers</summary>
+      <ul>
+        <li>Click any card picture to see it bigger. Use <i>Change art</i> to pick a different printing, such as an extended or full art version.</li>
+        <li>Double-sided cards (Figments, Invokes, some promo heroes and more) get their back side printed automatically. Use <i>Print without the back</i> if you only want the front.</li>
+        <li>The art comes from Fabrary's card images, at about 550 × 760 pixels. That prints fine for playtesting, but it isn't as sharp as a real card.</li>
+        <li>This page adds the extra edge (bleed) MakePlayingCards needs, so nothing important gets cut off.</li>
+        <li>Your list clears if you close or reload this page, so download before you leave.</li>
+        <li>Google Chrome needs to be installed for the Autofill program to work.</li>
+      </ul>
+    </details>
+  </section>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <header><h2 id="modalTitle"></h2><button type="button" id="modalClose">Close</button></header>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<script id="carddata" type="application/json">/*CARD_DATA*/</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(() => {
+  "use strict";
+  // ---------- constants ----------
+  const BRACKETS = [18, 36, 55, 72, 90, 108, 126, 144, 162, 180, 198, 216, 234, 396, 504, 612];
+  const MAX = 612;
+  const GOOD_W = 500;
+  const SNAPSHOT_DATE = "/*SNAPSHOT_DATE*/";
+  const PITCH = { 1: "Red", 2: "Yellow", 3: "Blue" };
+  const PITCH_WORDS = { red: 1, r: 1, yellow: 2, y: 2, blue: 3, b: 3 };
+  const IMG = (stem) => `https://content.fabrary.net/cards/${encodeURIComponent(stem)}.webp`;
+  const IMG_ALT = (stem) => `https://legendstory-production-s3-public.s3.amazonaws.com/media/cards/large/${encodeURIComponent(stem)}.webp`;
+  const TCG = (pid) => `https://tcgplayer-cdn.tcgplayer.com/product/${pid}_in_1000x1000.jpg`;
+  const RAW = "https://raw.githubusercontent.com/the-fab-cube/flesh-and-blood-cards/develop/json/english/";
+  // Print size at 300 dpi: 822 x 1122 with bleed, card itself 744 x 1040.
+  const PW = 822, PH = 1122, CW = 744, CH = 1040;
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- card database ----------
+  // Row: [name, pitch, typeText, arts:[[stem, label, tcgId, backStem?]], aliases[]]
+  let DB = [];
+  let dbDate = SNAPSHOT_DATE;
+  const norm = (s) => s.toLowerCase().replace(/&/g, " and ").replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  let searchKeys = [];
+  function setDB(rows, date) {
+    DB = rows; dbDate = date;
+    searchKeys = DB.map((r) => ({ n: norm(r[0]), a: (r[4] || []).map(norm) }));
+    $("dbInfo").textContent = `Card list: ${DB.length.toLocaleString("en-NZ")} cards, updated ${fmtDate(dbDate)}.`;
+  }
+  function fmtDate(iso) {
+    const d = new Date(iso + "T12:00:00");
+    return isNaN(d) ? iso : d.toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" });
+  }
+  (function loadDB() {
+    let rows = JSON.parse($("carddata").textContent), date = SNAPSHOT_DATE;
+    try {
+      const saved = JSON.parse(localStorage.getItem("fabProxyDB") || "null");
+      if (saved && saved.date > date && Array.isArray(saved.rows)) { rows = saved.rows; date = saved.date; }
+    } catch (e) { /* storage unavailable */ }
+    setDB(rows, date);
+  })();
+
+  // Same logic as the snapshot builder, run in the page to refresh from the source data.
+  function buildIndex(cards, faces, artVars) {
+    const avn = Object.fromEntries(artVars.map((a) => [a.id, a.name]));
+    const stemOf = (p) => (p.image_url ? p.image_url.split("/").pop().replace(/\.[^.]+$/, "") : null);
+    const pstem = {};
+    for (const c of cards) for (const p of c.printings) pstem[p.unique_id] = stemOf(p);
+    const backOf = {}, backStems = new Set();
+    for (const x of faces) {
+      const f = pstem[x.front_unique_id], b = pstem[x.back_unique_id];
+      if (f && b && (x.is_DFC || b.endsWith("_BACK"))) { backOf[f] = b; backStems.add(b); }
+    }
+    const pref = (s) => (s.startsWith("U-") ? 1 : 0) + (/-(RF|CF|GF|MV)$/.test(s.replace("_BACK", "")) ? 2 : 0);
+    const out = [], backOnly = [];
+    for (const c of cards) {
+      const arts = new Map();
+      for (const p of c.printings) {
+        const s = stemOf(p); if (!s) continue;
+        const key = p.id + "|" + (p.art_variations || []).join(",");
+        const cand = { sc: pref(s), s, p };
+        if (!arts.has(key) || cand.sc < arts.get(key).sc) arts.set(key, cand);
+      }
+      if (!arts.size) continue;
+      const vals = [...arts.values()];
+      if (vals.every((v) => backStems.has(v.s))) { backOnly.push([c, vals]); continue; }
+      // back-face images belong on the back, not in the list of front arts
+      const fronts = vals.filter((v) => !backStems.has(v.s));
+      vals.length = 0; vals.push(...fronts);
+      // standard art first, and single-sided printings before double-sided ones
+      const key = (v) => (v.p.art_variations.length ? 2 : 0) + (backOf[v.s] ? 1 : 0);
+      vals.sort((a, b) => key(a) - key(b));
+      const entries = vals.map(({ s, p }) => {
+        let label = p.id;
+        if (p.art_variations.length) label += " · " + p.art_variations.map((a) => avn[a] || a).join(", ");
+        const tid = /^\d+$/.test(p.tcgplayer_product_id || "") ? parseInt(p.tcgplayer_product_id, 10) : 0;
+        const e = [s, label, tid];
+        if (backOf[s]) e.push(backOf[s]);
+        return e;
+      });
+      out.push([c.name, /^\d$/.test(c.pitch || "") ? parseInt(c.pitch, 10) : 0, c.type_text || "", entries, []]);
+    }
+    const stemIdx = {};
+    out.forEach((r, i) => r[3].forEach((e) => { if (e[3]) stemIdx[e[3]] = i; }));
+    for (const [c, vals] of backOnly) {
+      for (const v of vals) { const i = stemIdx[v.s]; if (i !== undefined) { if (!out[i][4].includes(c.name)) out[i][4].push(c.name); break; } }
+    }
+    out.sort((a, b) => a[0].toLowerCase() < b[0].toLowerCase() ? -1 : a[0].toLowerCase() > b[0].toLowerCase() ? 1 : a[1] - b[1]);
+    return out;
+  }
+
+  async function updateDB() {
+    const btn = $("dbUpdate");
+    btn.disabled = true; btn.textContent = "Checking…";
+    try {
+      const commit = await fetch("https://api.github.com/repos/the-fab-cube/flesh-and-blood-cards/commits?per_page=1&sha=develop").then((r) => r.json());
+      const date = (commit[0]?.commit?.committer?.date || "").slice(0, 10);
+      if (date && date <= dbDate) { btn.textContent = "Already up to date"; return; }
+      btn.textContent = "Downloading card list (about 25 MB)…";
+      const [cards, faces, artVars] = await Promise.all(["card.json", "card-face-association.json", "art-variation.json"].map((f) => fetch(RAW + f).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })));
+      const rows = buildIndex(cards, faces, artVars);
+      const d = date || new Date().toISOString().slice(0, 10);
+      setDB(rows, d);
+      try { localStorage.setItem("fabProxyDB", JSON.stringify({ date: d, rows })); } catch (e) { /* too big or blocked; fine for this visit */ }
+      btn.textContent = "Updated";
+    } catch (e) {
+      btn.textContent = "Couldn't check. Try again later";
+    } finally {
+      setTimeout(() => { btn.disabled = false; btn.textContent = "Check for new cards"; }, 4000);
+    }
+  }
+
+  // ---------- search ----------
+  function search(query, limit = 10) {
+    const toks = norm(query).split(" ").filter(Boolean);
+    if (!toks.length) return [];
+    const nameToks = [], pitches = [];
+    for (const t of toks) (PITCH_WORDS[t] && t.length > 1 ? pitches : nameToks).push(t);
+    const q = nameToks.join(" ");
+    const hits = [];
+    for (let i = 0; i < DB.length; i++) {
+      const row = DB[i], k = searchKeys[i];
+      if (pitches.length && !pitches.some((t) => PITCH_WORDS[t] === row[1]) && !pitches.every((t) => k.n.includes(t))) continue;
+      let best = -1;
+      for (const s of [k.n, ...k.a]) {
+        if (!nameToks.every((t) => s.includes(t))) continue;
+        let sc = 1;
+        if (s === q) sc = 5;
+        else if (s.startsWith(q)) sc = 4;
+        else if ((" " + s).includes(" " + q)) sc = 3;
+        else if (nameToks.every((t) => (" " + s).includes(" " + t))) sc = 2;
+        if (s !== k.n) sc -= 0.5;
+        best = Math.max(best, sc);
+      }
+      if (best >= 0) hits.push([best, i]);
+    }
+    hits.sort((a, b) => b[0] - a[0] || DB[a[1]][0].length - DB[b[1]][0].length || DB[a[1]][0].localeCompare(DB[b[1]][0]) || DB[a[1]][1] - DB[b[1]][1]);
+    return hits.slice(0, limit).map((h) => h[1]);
+  }
+
+  // ---------- images ----------
+  function artImg(stem, cls) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.decoding = "async";
+    img.loading = "lazy";
+    if (cls) img.className = cls;
+    img.alt = "";
+    img.src = IMG(stem);
+    img.onerror = () => { img.onerror = null; img.removeAttribute("crossorigin"); img.src = IMG_ALT(stem); };
+    return img;
+  }
+
+  async function fetchBlob(url) {
+    const r = await fetch(url, { mode: "cors", cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.blob();
+  }
+  async function fetchArt(stem, tcgId) {
+    try { return await fetchBlob(IMG(stem)); }
+    catch (e) {
+      if (tcgId) return fetchBlob(TCG(tcgId));
+      throw e;
+    }
+  }
+
+  function canvasToBlob(c, type = "image/png", quality) { return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error("encode"))), type, quality)); }
+
+  // Average colour of the card's outer border, used to fill the bleed and the rounded corners.
+  function borderColour(src) {
+    const sw = src.width, sh = src.height;
+    const s = document.createElement("canvas");
+    s.width = sw; s.height = sh;
+    const g = s.getContext("2d", { willReadFrequently: true });
+    g.drawImage(src, 0, 0);
+    const pts = [[3, sh / 2], [sw - 4, sh / 2], [sw / 2, 3], [sw / 2, sh - 4], [3, sh / 3], [sw - 4, (2 * sh) / 3]];
+    let r = 0, gg = 0, b = 0, n = 0;
+    for (const [x, y] of pts) {
+      const d = g.getImageData(Math.round(x), Math.round(y), 1, 1).data;
+      if (d[3] < 200) continue;
+      r += d[0]; gg += d[1]; b += d[2]; n++;
+    }
+    return n ? `rgb(${Math.round(r / n)},${Math.round(gg / n)},${Math.round(b / n)})` : "#000";
+  }
+
+  // Turns any card image into an 822 x 1122 print file with bleed (JPEG, high quality).
+  async function toPrintFile(blob) {
+    let src = await createImageBitmap(blob);
+    if (src.width > src.height) {
+      const r = document.createElement("canvas");
+      r.width = src.height; r.height = src.width;
+      const rg = r.getContext("2d");
+      rg.translate(r.width, 0); rg.rotate(Math.PI / 2); rg.drawImage(src, 0, 0);
+      src = r;
+    }
+    const sw = src.width, sh = src.height, ratio = sw / sh;
+    const c = document.createElement("canvas");
+    c.width = PW; c.height = PH;
+    const g = c.getContext("2d");
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = "high";
+    g.fillStyle = borderColour(src); g.fillRect(0, 0, PW, PH);
+    const hasBleed = Math.abs(ratio - PW / PH) < Math.abs(ratio - CW / CH) && ratio > 0.725;
+    if (hasBleed) {
+      g.drawImage(src, 0, 0, PW, PH);
+    } else {
+      const ox = (PW - CW) / 2, oy = (PH - CH) / 2;
+      g.drawImage(src, ox, oy, CW, CH);
+      // Stretch the outer edge of the card into the bleed area.
+      g.drawImage(src, 1, 0, 1, sh, 0, oy, ox, CH);
+      g.drawImage(src, sw - 2, 0, 1, sh, ox + CW, oy, PW - ox - CW, CH);
+      g.drawImage(src, 0, 1, sw, 1, ox, 0, CW, oy);
+      g.drawImage(src, 0, sh - 2, sw, 1, ox, oy + CH, CW, PH - oy - CH);
+    }
+    if (src.close) src.close();
+    return canvasToBlob(c, "image/jpeg", 0.95);
+  }
+
+  // Built-in plain card back.
+  function drawPlainBack(w = PW, h = PH) {
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, "#2a2420"); grad.addColorStop(1, "#14110f");
+    g.fillStyle = grad; g.fillRect(0, 0, w, h);
+    g.strokeStyle = "#a8783a"; g.lineWidth = w * 0.012;
+    const inset = w * 0.09;
+    g.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
+    g.lineWidth = w * 0.004;
+    g.strokeRect(inset * 1.35, inset * 1.35, w - inset * 2.7, h - inset * 2.7);
+    g.save(); g.translate(w / 2, h / 2); g.rotate(Math.PI / 4);
+    g.lineWidth = w * 0.01; const d = w * 0.16; g.strokeRect(-d / 2, -d / 2, d, d);
+    g.restore();
+    return c;
+  }
+
+  // ---------- state ----------
+  // card: {id, kind:'db'|'upload', row, art, qty, own:{file,url}|null, back:{file,url}|null, w, h, example, failed}
+  let cards = [];
+  let cardback = null;
+  let nextId = 1;
+  let pickTarget = null; // {id, what:'back'|'own'}
+
+  const rowOf = (c) => DB[c.row];
+  const nameOf = (c) => (c.kind === "db" ? rowOf(c)[0] : c.name);
+  const pitchOf = (c) => (c.kind === "db" ? rowOf(c)[1] : c.pitch || 0);
+  const artOf = (c) => (c.kind === "db" ? rowOf(c)[3][c.art] : null);
+  const displayName = (c) => nameOf(c) + (pitchOf(c) ? ` (${PITCH[pitchOf(c)]})` : "");
+  const total = () => cards.reduce((s, c) => s + c.qty, 0);
+  const realCards = () => cards.filter((c) => !c.example);
+  const bracketFor = (n) => BRACKETS.find((b) => n <= b) || null;
+
+  function clearExamplesIfAny() { if (cards.some((c) => c.example)) cards = realCards(); }
+
+  function addDbCard(rowIdx, qty = 1, opts = {}) {
+    if (!opts.example) clearExamplesIfAny();
+    const existing = cards.find((c) => c.kind === "db" && c.row === rowIdx && !c.own);
+    if (existing && !opts.example) { existing.qty = Math.min(MAX, existing.qty + qty); return existing; }
+    const c = { id: nextId++, kind: "db", row: rowIdx, art: 0, qty: Math.min(MAX, qty), own: null, back: null, noBack: false, example: !!opts.example, failed: false };
+    cards.push(c);
+    return c;
+  }
+
+  // ---------- decklist ----------
+  const SKIP_KEYS = /^(name|deck|format|class|talents?|made with|created|author|date|total|sideboard|maindeck|main deck|deck cards|arena cards|cards)\b/i;
+  const LIST_KEYS = /^(hero|weapons?|equipment|arena|tokens?|demi-heroes?|mechanologists?)\s*:/i;
+  function lookup(name, pitch) {
+    const n = norm(name);
+    const matches = [];
+    DB.forEach((r, i) => { if (searchKeys[i].n === n || searchKeys[i].a.includes(n)) matches.push(i); });
+    if (!matches.length) return { idx: null };
+    if (pitch) { const m = matches.find((i) => DB[i][1] === pitch); return { idx: m ?? null, wrongPitch: m === undefined }; }
+    if (matches.length === 1) return { idx: matches[0] };
+    const noPitch = matches.find((i) => !DB[i][1]);
+    if (noPitch !== undefined) return { idx: noPitch };
+    return { idx: matches.find((i) => DB[i][1] === 1) ?? matches[0], guessed: true };
+  }
+  function parseLine(line) {
+    let s = line.trim().replace(/^[-*•]\s*/, "");
+    let qty = 1, pitch = 0, m;
+    const takePitch = () => {
+      if ((m = s.match(/\s*[\(\[]\s*(red|yellow|blue|r|y|b|1|2|3)\s*[\)\]]\s*$/i))) {
+        const v = m[1].toLowerCase();
+        pitch = PITCH_WORDS[v] || +v;
+        s = s.slice(0, m.index).trim();
+      } else if ((m = s.match(/\s+-\s+(red|yellow|blue)$/i))) { pitch = PITCH_WORDS[m[1].toLowerCase()]; s = s.slice(0, m.index).trim(); }
+    };
+    if ((m = s.match(/^\(?(\d{1,3})\)?\s*x?\s+(.+)$/i))) { qty = +m[1]; s = m[2]; }
+    takePitch();
+    if ((m = s.match(/^(.+?)\s+x\s?(\d{1,3})$/i))) { qty = +m[2]; s = m[1]; takePitch(); }
+    return { qty, name: s.trim(), pitch };
+  }
+  function addDecklist(text) {
+    const added = [], missing = [], guessed = [];
+    let count = 0;
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || /^(#|\/\/)/.test(line) || /^[=\-_]{3,}$/.test(line)) continue;
+      if (LIST_KEYS.test(line)) {
+        const rest = line.slice(line.indexOf(":") + 1).trim();
+        if (!rest) continue;
+        const whole = lookup(rest, 0);
+        const parts = whole.idx !== null ? [rest] : splitList(rest);
+        for (const p of parts) handle({ qty: 1, ...parseLine(p), qty: 1 }, p);
+        continue;
+      }
+      if (SKIP_KEYS.test(line) && (line.includes(":") || lookup(parseLine(line).name, 0).idx === null)) continue;
+      handle(parseLine(line), line);
+    }
+    function handle(item, original) {
+      const r = lookup(item.name, item.pitch);
+      if (r.idx === null) { missing.push(original); return; }
+      addDbCard(r.idx, item.qty);
+      count += item.qty; added.push(r.idx);
+      if (r.guessed) guessed.push(DB[r.idx][0]);
+    }
+    return { count, added: added.length, missing, guessed };
+  }
+  function splitList(text) {
+    const bits = text.split(/\s*,\s*/);
+    const out = [];
+    for (let i = 0; i < bits.length; ) {
+      let took = 1;
+      for (let j = bits.length; j > i + 1; j--) {
+        if (lookup(bits.slice(i, j).join(", "), 0).idx !== null) { took = j - i; break; }
+      }
+      out.push(bits.slice(i, i + took).join(", "));
+      i += took;
+    }
+    return out;
+  }
+
+  // ---------- uploads ----------
+  function parseFileName(fname) {
+    let base = fname.replace(/\.[^.]+$/, "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+    let qty = 1;
+    const m = base.match(/^(\d{1,3})\s*x?\s+(.+)$/i);
+    if (m) { qty = Math.max(1, Math.min(MAX, parseInt(m[1], 10))); base = m[2].trim(); }
+    let pitch = 0;
+    const pm = base.match(/\((red|yellow|blue)\)\s*$/i);
+    if (pm) { pitch = PITCH_WORDS[pm[1].toLowerCase()]; base = base.slice(0, pm.index).trim(); }
+    return { name: base || "Card", qty, pitch };
+  }
+  function measure(url) {
+    return new Promise((res) => { const i = new Image(); i.onload = () => res({ w: i.naturalWidth, h: i.naturalHeight }); i.onerror = () => res({ w: 0, h: 0 }); i.src = url; });
+  }
+  const isImage = (f) => /^image\/(png|jpe?g|webp)$/i.test(f.type) || /\.(png|jpe?g|webp)$/i.test(f.name);
+  async function addFiles(list) {
+    const files = [...list].filter(isImage);
+    const skipped = list.length - files.length;
+    if (!files.length) { setStatus("Those files aren't images. Use PNG, JPG or WEBP.", "err"); return; }
+    clearExamplesIfAny();
+    for (const f of files) {
+      const { name, qty, pitch } = parseFileName(f.name);
+      const url = URL.createObjectURL(f);
+      const { w, h } = await measure(url);
+      cards.push({ id: nextId++, kind: "upload", name, pitch, qty, own: { file: f, url }, back: null, w, h, example: false, failed: false });
+    }
+    setStatus(`Added ${files.length} image${files.length === 1 ? "" : "s"}.` + (skipped ? ` Skipped ${skipped} that weren't images.` : ""), "ok");
+    render();
+  }
+
+  // ---------- rendering ----------
+  function pip(p) { const s = document.createElement("span"); s.className = "pip p" + p; s.title = PITCH[p] + " pitch"; return s; }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  function frontImg(c, cls) {
+    if (c.own) { const i = el("img", cls); i.src = c.own.url; i.alt = ""; return i; }
+    return artImg(artOf(c)[0], cls);
+  }
+  // A printing with a reverse side in the card data (e.g. Figments, Invokes, some promo heroes).
+  const canAutoBack = (c) => c.kind === "db" && !c.own && !!artOf(c)[3];
+  const autoBack = (c) => (canAutoBack(c) && !c.noBack ? artOf(c)[3] : null);
+  function backImg(c, cls) {
+    if (c.back) { const i = el("img", cls); i.src = c.back.url; i.alt = ""; return i; }
+    const s = autoBack(c);
+    return s ? artImg(s, cls) : null;
+  }
+
+  function render() {
+    const list = $("cards");
+    list.textContent = "";
+    if (!cards.length) list.appendChild(el("li", "empty", "No cards yet. Type a card name above to get started."));
+    for (const c of cards) {
+      const li = el("li", "card" + (c.failed ? " fail" : ""));
+      const th = el("button", "thumbs");
+      th.type = "button"; th.setAttribute("aria-label", "View " + displayName(c) + " larger");
+      th.appendChild(frontImg(c, "thumb"));
+      const bi = backImg(c, "thumb backthumb");
+      if (bi) th.appendChild(bi);
+      th.addEventListener("click", () => openBig(c));
+
+      const info = el("div", "info");
+      const nr = el("div", "namerow");
+      if (pitchOf(c)) nr.appendChild(pip(pitchOf(c)));
+      const nm = el("span", "name", nameOf(c)); nm.title = displayName(c);
+      nr.appendChild(nm);
+      info.appendChild(nr);
+
+      const sub = el("div", "sub");
+      if (c.example) sub.appendChild(el("span", null, "Example only"));
+      else {
+        if (c.kind === "db") {
+          const a = artOf(c);
+          if (!c.own) sub.appendChild(el("span", null, a[1]));
+          if (rowOf(c)[3].length > 1 && !c.own) {
+            const b = el("button", "linkish", `Change art (${rowOf(c)[3].length})`); b.type = "button";
+            b.addEventListener("click", () => openArtPicker(c)); sub.appendChild(b);
+          }
+          const ob = el("button", "linkish", c.own ? "Use database art" : "Use my own image"); ob.type = "button";
+          ob.addEventListener("click", () => {
+            if (c.own) { URL.revokeObjectURL(c.own.url); c.own = null; c.failed = false; render(); }
+            else pickFor(c, "own");
+          });
+          sub.appendChild(ob);
+        }
+        if (canAutoBack(c)) {
+          sub.appendChild(el("span", null, c.noBack ? "Back left plain" : "Double-sided"));
+          const tb = el("button", "linkish", c.noBack ? "Print the back side" : "Print without the back"); tb.type = "button";
+          tb.addEventListener("click", () => { c.noBack = !c.noBack; render(); });
+          sub.appendChild(tb);
+        } else {
+          const bb = el("button", "linkish", c.back ? "Change back" : "Add a back"); bb.type = "button";
+          bb.addEventListener("click", () => pickFor(c, "back")); sub.appendChild(bb);
+          if (c.back) {
+            const rb = el("button", "linkish", "Remove back"); rb.type = "button";
+            rb.addEventListener("click", () => { URL.revokeObjectURL(c.back.url); c.back = null; render(); });
+            sub.appendChild(rb);
+          }
+        }
+      }
+      if (c.own && c.w && c.w < GOOD_W) sub.appendChild(el("span", "flag", `May print blurry (${c.w}×${c.h})`));
+      if (c.own && c.w && c.h) { const r = c.w / c.h; if (r < 0.66 || r > 0.78) sub.appendChild(el("span", "flag", "Not card-shaped, will be stretched")); }
+      if (c.failed) sub.appendChild(el("span", "flag bad", "Couldn't get this art. Try other art or use your own image"));
+      info.appendChild(sub);
+
+      const ctr = el("div", "controls");
+      const q = el("div", "qty");
+      const minus = el("button", null, "−"); minus.type = "button"; minus.setAttribute("aria-label", "One fewer " + displayName(c));
+      const inp = el("input"); inp.type = "number"; inp.min = "1"; inp.max = String(MAX); inp.value = c.qty; inp.id = "qty-" + c.id;
+      inp.setAttribute("aria-label", "Copies of " + displayName(c));
+      const plus = el("button", null, "+"); plus.type = "button"; plus.setAttribute("aria-label", "One more " + displayName(c));
+      minus.addEventListener("click", () => { c.qty = Math.max(1, c.qty - 1); inp.value = c.qty; summary(); });
+      plus.addEventListener("click", () => { c.qty = Math.min(MAX, c.qty + 1); inp.value = c.qty; summary(); });
+      inp.addEventListener("change", () => { const v = parseInt(inp.value, 10); c.qty = isNaN(v) ? 1 : Math.max(1, Math.min(MAX, v)); inp.value = c.qty; summary(); });
+      q.append(minus, inp, plus);
+      const rm = el("button", "ghost remove", "✕"); rm.type = "button"; rm.setAttribute("aria-label", "Remove " + displayName(c));
+      rm.addEventListener("click", () => { revoke(c); cards = cards.filter((x) => x !== c); render(); });
+      ctr.append(q, rm);
+
+      li.append(th, info, ctr);
+      list.appendChild(li);
+    }
+    $("exampleNote").hidden = !cards.some((c) => c.example);
+    $("listFoot").hidden = !realCards().length;
+    summary();
+  }
+  function revoke(c) { if (c.own) URL.revokeObjectURL(c.own.url); if (c.back) URL.revokeObjectURL(c.back.url); }
+
+  function summary() {
+    const n = total(), b = bracketFor(n);
+    $("totCards").textContent = n;
+    $("totBracket").textContent = b || "—";
+    $("bar").style.width = b ? Math.round((n / b) * 100) + "%" : "100%";
+    $("bracketHint").textContent = !n || !b ? "" : (b - n > 0 ? `You can add ${b - n} more card${b - n === 1 ? "" : "s"} for the same price tier.` : "This tier is exactly full.");
+    $("listMeta").textContent = cards.length ? `${cards.length} different, ${n} total` : "";
+    const msgs = [];
+    if (n > MAX) msgs.push(["bad", `That's ${n} cards. MakePlayingCards takes up to ${MAX} per order, so remove ${n - MAX} or split it into two orders.`]);
+    if (cards.length && !realCards().length) msgs.push(["warn", "Add your own cards to make a real order."]);
+    const ul = $("msgs"); ul.textContent = "";
+    for (const [cls, t] of msgs) ul.appendChild(el("li", cls, t));
+    $("download").disabled = busy || !realCards().length || cards.some((c) => c.example) || n > MAX;
+  }
+
+  function setStatus(text, kind) { const s = $("status"); s.textContent = text; s.className = "status" + (kind ? " " + kind : ""); }
+
+  // ---------- modals ----------
+  let lastFocus = null;
+  function openModal(title, body) {
+    lastFocus = document.activeElement;
+    $("modalTitle").textContent = title;
+    const mb = $("modalBody"); mb.textContent = ""; mb.appendChild(body);
+    $("modal").hidden = false;
+    $("modalClose").focus();
+  }
+  function closeModal() { $("modal").hidden = true; if (lastFocus) lastFocus.focus(); }
+  $("modalClose").addEventListener("click", closeModal);
+  $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closeModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("modal").hidden) closeModal(); });
+
+  function openBig(c) {
+    const box = el("div", "bigview");
+    box.appendChild(frontImg(c));
+    const b = backImg(c);
+    if (b) box.appendChild(b);
+    openModal(displayName(c), box);
+  }
+  function openArtPicker(c) {
+    const grid = el("div", "artgrid");
+    rowOf(c)[3].forEach((a, i) => {
+      const b = el("button", "artopt" + (i === c.art ? " sel" : ""));
+      b.type = "button";
+      b.appendChild(artImg(a[0]));
+      b.appendChild(el("span", null, a[1] + (a[3] ? " · Double-sided" : "")));
+      b.addEventListener("click", () => { c.art = i; c.failed = false; closeModal(); render(); });
+      grid.appendChild(b);
+    });
+    openModal("Choose art for " + displayName(c), grid);
+  }
+
+  function pickFor(c, what) { pickTarget = { id: c.id, what }; $("pickOne").value = ""; $("pickOne").click(); }
+  $("pickOne").addEventListener("change", async (e) => {
+    const f = e.target.files[0];
+    const c = cards.find((x) => x.id === pickTarget?.id);
+    if (!f || !c) return;
+    const url = URL.createObjectURL(f);
+    if (pickTarget.what === "back") { if (c.back) URL.revokeObjectURL(c.back.url); c.back = { file: f, url }; }
+    else { if (c.own) URL.revokeObjectURL(c.own.url); c.own = { file: f, url }; const m = await measure(url); c.w = m.w; c.h = m.h; c.failed = false; }
+    render();
+  });
+
+  // ---------- search box ----------
+  const q = $("q"), results = $("results"), rlist = $("resultList");
+  let hits = [], active = 0;
+  function showResults() {
+    hits = search(q.value);
+    rlist.textContent = "";
+    if (!q.value.trim()) { results.hidden = true; q.setAttribute("aria-expanded", "false"); return; }
+    results.hidden = false; q.setAttribute("aria-expanded", "true");
+    if (!hits.length) { rlist.appendChild(el("li", "noresult", "No cards match. Check the spelling, or try fewer words.")); $("peek").hidden = true; return; }
+    $("peek").hidden = false;
+    active = Math.min(active, hits.length - 1);
+    hits.forEach((idx, i) => {
+      const r = DB[idx];
+      const li = el("li", "opt" + (i === active ? " active" : ""));
+      li.id = "opt-" + i; li.setAttribute("role", "option"); li.setAttribute("aria-selected", i === active ? "true" : "false");
+      li.appendChild(artImg(r[3][0][0]));
+      const t = el("div", "t");
+      const nm = el("div", "nm");
+      if (r[1]) nm.appendChild(pip(r[1]));
+      nm.appendChild(el("span", null, r[0]));
+      t.appendChild(nm);
+      t.appendChild(el("div", "ty", r[2] + (r[4].length ? ` · back: ${r[4].join(", ")}` : "")));
+      li.appendChild(t);
+      li.appendChild(el("span", "add", "Add"));
+      li.addEventListener("mouseenter", () => setActive(i));
+      li.addEventListener("mousedown", (e) => { e.preventDefault(); choose(i); });
+      rlist.appendChild(li);
+    });
+    q.setAttribute("aria-activedescendant", "opt-" + active);
+    updatePeek();
+  }
+  function setActive(i) {
+    active = i;
+    [...rlist.children].forEach((li, j) => { li.classList.toggle("active", j === i); li.setAttribute("aria-selected", j === i ? "true" : "false"); });
+    q.setAttribute("aria-activedescendant", "opt-" + i);
+    rlist.children[i]?.scrollIntoView({ block: "nearest" });
+    updatePeek();
+  }
+  function updatePeek() {
+    const r = DB[hits[active]]; if (!r) return;
+    const img = $("peekImg");
+    img.crossOrigin = "anonymous"; img.src = IMG(r[3][0][0]);
+    img.onerror = () => { img.onerror = null; img.removeAttribute("crossorigin"); img.src = IMG_ALT(r[3][0][0]); };
+    $("peekCap").textContent = `${r[0]}${r[1] ? " (" + PITCH[r[1]] + ")" : ""}${r[3].length > 1 ? ` · ${r[3].length} arts to choose from` : ""}`;
+  }
+  function choose(i) {
+    const idx = hits[i]; if (idx === undefined) return;
+    const c = addDbCard(idx, 1);
+    setStatus(`Added ${displayName(c)}${c.qty > 1 ? `, now ${c.qty} copies` : ""}.`, "ok");
+    q.value = ""; showResults(); render(); q.focus();
+  }
+  q.addEventListener("input", () => { active = 0; showResults(); });
+  q.addEventListener("focus", showResults);
+  q.addEventListener("blur", () => setTimeout(() => { results.hidden = true; q.setAttribute("aria-expanded", "false"); }, 120));
+  q.addEventListener("keydown", (e) => {
+    if (results.hidden || !hits.length) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((active + 1) % hits.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((active - 1 + hits.length) % hits.length); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(active); }
+    else if (e.key === "Escape") { results.hidden = true; }
+  });
+
+  // ---------- decklist ----------
+  $("deckAdd").addEventListener("click", () => {
+    const text = $("deckText").value;
+    if (!text.trim()) return;
+    const r = addDecklist(text);
+    const rep = $("deckReport"); rep.textContent = "";
+    rep.appendChild(el("div", r.count ? null : "bad", r.count ? `Added ${r.count} card${r.count === 1 ? "" : "s"}.` : "No cards were recognised."));
+    if (r.guessed.length) rep.appendChild(el("div", "warn", `No pitch given, so Red was used for: ${[...new Set(r.guessed)].join(", ")}. Check these.`));
+    if (r.missing.length) {
+      const d = el("div", "bad"); d.appendChild(el("span", null, "Couldn't find these lines. Add them with the search box:"));
+      const ul = el("ul"); r.missing.slice(0, 30).forEach((m) => ul.appendChild(el("li", null, m))); d.appendChild(ul); rep.appendChild(d);
+    }
+    if (r.count && !r.missing.length) $("deckText").value = "";
+    render();
+  });
+
+  // ---------- build order ----------
+  let busy = false;
+  const safeFile = (s) => (s.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "") || "card").slice(0, 100);
+  const xmlEsc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+
+  async function pool(items, n, fn) {
+    let i = 0;
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; await fn(items[k], k); } }));
+  }
+
+  async function buildZip(onProgress) {
+    const zip = new JSZip();
+    const folder = "card-images";
+    const used = new Set();
+    const unique = (base) => { let name = `${base}.jpg`, i = 2; while (used.has(name.toLowerCase())) name = `${base} (${i++}).jpg`; used.add(name.toLowerCase()); return name; };
+
+    // Work out every image job first
+    const jobs = [];
+    let slot = 0;
+    const fronts = [], backs = [];
+    for (const c of cards) {
+      const slots = Array.from({ length: c.qty }, (_, i) => slot + i);
+      slot += c.qty;
+      const a = artOf(c);
+      const base = safeFile(displayName(c) + (c.kind === "db" && !c.own ? ` [${a[0]}]` : ""));
+      const fname = unique(base);
+      fronts.push({ fname, slots, q: displayName(c).toLowerCase() });
+      jobs.push({ c, fname, get: c.own ? () => Promise.resolve(c.own.file) : () => fetchArt(a[0], a[2]) });
+      let backGet = null;
+      if (c.back) backGet = () => Promise.resolve(c.back.file);
+      else if (autoBack(c)) { const bs = autoBack(c); backGet = () => fetchArt(bs, 0); }
+      if (backGet) {
+        const bname = unique(base + " - back");
+        backs.push({ fname: bname, slots, q: displayName(c).toLowerCase() });
+        jobs.push({ c, fname: bname, get: backGet });
+      }
+    }
+
+    const failed = new Set();
+    let done = 0;
+    await pool(jobs, 4, async (job) => {
+      try {
+        const src = await job.get();
+        zip.file(`${folder}/${job.fname}`, await toPrintFile(src));
+      } catch (e) {
+        failed.add(job.c);
+      }
+      onProgress(++done, jobs.length);
+    });
+    if (failed.size) return { failed };
+
+    const cbName = unique("cardback");
+    zip.file(`${folder}/${cbName}`, cardback ? await toPrintFile(cardback.file) : await canvasToBlob(drawPlainBack(), "image/jpeg", 0.95));
+
+    const cardXml = (c) => ["        <card>", `            <id>${xmlEsc(folder + "/" + c.fname)}</id>`, "            <sourceType>Local File</sourceType>", `            <slots>${c.slots.join(",")}</slots>`, `            <name>${xmlEsc(c.fname)}</name>`, `            <query>${xmlEsc(c.q)}</query>`, "        </card>"].join("\n");
+    const xml = ['<?xml version="1.0" encoding="utf-8"?>', "<order>", "    <details>", `        <quantity>${slot}</quantity>`, `        <bracket>${bracketFor(slot)}</bracket>`, `        <stock>${xmlEsc($("stock").value)}</stock>`, `        <foil>${$("foil").checked ? "true" : "false"}</foil>`, "    </details>", "    <fronts>", fronts.map(cardXml).join("\n"), "    </fronts>", ...(backs.length ? ["    <backs>", backs.map(cardXml).join("\n"), "    </backs>"] : []), `    <cardback>${xmlEsc(folder + "/" + cbName)}</cardback>`, "</order>", ""].join("\n");
+    zip.file("fab-order.xml", xml);
+
+    const decklist = cards.map((c) => `${c.qty}x ${displayName(c)}`).join("\r\n");
+    zip.file("decklist.txt", decklist + "\r\n");
+    zip.file("READ ME FIRST.txt", [
+      "FAB PROXY ORDER", "===============",
+      `${slot} cards, ${cards.length} different, price tier up to ${bracketFor(slot)}.`, "",
+      "HOW TO USE",
+      "1. Unzip this file (right-click > Extract All). Keep everything in the folder together.",
+      "2. Download the Autofill program from https://github.com/chilli-axe/mpc-autofill/releases",
+      "   (on Windows, the file named autofill-windows.exe).",
+      "3. Move the Autofill program into this folder, next to fab-order.xml.",
+      "4. Double-click the Autofill program. If Windows says it protected your PC,",
+      "   click 'More info' then 'Run anyway'. Choose fab-order.xml if it asks.",
+      "5. It opens Google Chrome and fills in the MakePlayingCards order. Don't click in",
+      "   that window until it says it has finished.",
+      "6. Check the cards on the MakePlayingCards page, then add to cart and check out.", "",
+      "Google Chrome must be installed.",
+      "Don't rename or move files inside the card-images folder.", "",
+    ].join("\r\n"));
+    return { blob: await zip.generateAsync({ type: "blob", compression: "STORE" }) };
+  }
+
+  async function doDownload() {
+    if (typeof JSZip === "undefined") { setStatus("This page needs an internet connection. Connect and reload the page.", "err"); return; }
+    busy = true; summary();
+    cards.forEach((c) => (c.failed = false));
+    $("progress").hidden = false; $("progressBar").style.width = "0";
+    setStatus("Getting card art…");
+    try {
+      const res = await buildZip((d, t) => { $("progressBar").style.width = Math.round((d / t) * 100) + "%"; setStatus(`Preparing images: ${d} of ${t}`); });
+      if (res.failed) {
+        res.failed.forEach((c) => (c.failed = true));
+        render();
+        setStatus(`Couldn't get art for ${res.failed.size} card${res.failed.size === 1 ? "" : "s"} (marked in red). Choose other art or use your own image, then try again.`, "err");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(res.blob);
+      a.download = `fab-proxy-order-${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      setStatus("Downloaded. Follow the steps below to finish.", "ok");
+    } catch (e) {
+      setStatus("Something went wrong preparing the images. Check your internet connection and try again.", "err");
+    } finally {
+      busy = false; $("progress").hidden = true; summary();
+    }
+  }
+
+  // ---------- wiring ----------
+  const drop = $("drop");
+  $("pickBtn").addEventListener("click", () => $("pick").click());
+  $("pick").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+  ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => { if (e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files); });
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => { e.preventDefault(); if (e.dataTransfer?.files?.length && !drop.contains(e.target)) addFiles(e.dataTransfer.files); });
+
+  // The site's own card back (cardback.jpg next to this page). Falls back to the plain back
+  // when the file isn't there, e.g. when the page is opened from a downloaded copy.
+  const DEFAULT_BACK_FILE = "cardback.jpg";
+  const DEFAULT_BACK_NAME = "Fakes and Bootleg back";
+  let defaultBack = null;
+  async function loadDefaultBack() {
+    if (location.protocol === "file:") return;
+    try {
+      const r = await fetch(DEFAULT_BACK_FILE, { cache: "no-cache" });
+      if (!r.ok) return;
+      const blob = await r.blob();
+      if (!/^image\//.test(blob.type)) return;
+      defaultBack = { file: new File([blob], DEFAULT_BACK_FILE, { type: blob.type }), url: URL.createObjectURL(blob), isDefault: true };
+      if (!cardback) { cardback = defaultBack; showCardback(); }
+    } catch (e) { /* keep the plain back */ }
+  }
+  function showCardback() {
+    const custom = cardback && !cardback.isDefault;
+    if (cardback) { $("cardbackImg").src = cardback.url; $("cardbackName").textContent = cardback.isDefault ? DEFAULT_BACK_NAME : cardback.file.name; }
+    else { $("cardbackImg").src = drawPlainBack(126, 172).toDataURL(); $("cardbackName").textContent = "Plain dark back (built in)"; }
+    $("cardbackReset").hidden = !custom;
+    $("cardbackReset").textContent = defaultBack ? `Go back to the ${DEFAULT_BACK_NAME}` : "Go back to the plain back";
+    $("cardbackBtn").textContent = custom ? "Choose a different back" : "Use my own back image";
+  }
+  $("cardbackBtn").addEventListener("click", () => { $("pickCardback").value = ""; $("pickCardback").click(); });
+  $("pickCardback").addEventListener("change", (e) => { const f = e.target.files[0]; if (!f) return; if (cardback && !cardback.isDefault) URL.revokeObjectURL(cardback.url); cardback = { file: f, url: URL.createObjectURL(f) }; showCardback(); });
+  $("cardbackReset").addEventListener("click", () => { if (cardback && !cardback.isDefault) URL.revokeObjectURL(cardback.url); cardback = defaultBack; showCardback(); });
+
+  $("clearExamples").addEventListener("click", () => { cards = realCards(); render(); });
+  $("clearAll").addEventListener("click", () => { $("confirmClear").hidden = false; $("clearAll").hidden = true; });
+  $("confirmNo").addEventListener("click", () => { $("confirmClear").hidden = true; $("clearAll").hidden = false; });
+  $("confirmYes").addEventListener("click", () => { cards.forEach(revoke); cards = []; $("confirmClear").hidden = true; $("clearAll").hidden = false; setStatus(""); render(); });
+  $("download").addEventListener("click", doDownload);
+  $("dbUpdate").addEventListener("click", updateDB);
+
+  // Example cards so the first view shows how it works.
+  function loadExamples() {
+    for (const [name, pitch, qty] of [["Command and Conquer", 1, 3], ["Sink Below", 3, 2], ["Dorinthea Ironsong", 0, 1]]) {
+      const r = lookup(name, pitch);
+      if (r.idx !== null) { const c = addDbCard(r.idx, qty, { example: true }); }
+    }
+  }
+
+  // Test hook (used only for automated checks)
+  window.__fab = { search, lookup, parseLine, addDecklist, toPrintFile, fetchArt, buildIndex, get cards() { return cards; }, buildZip, DB: () => DB };
+
+  showCardback();
+  loadDefaultBack();
+  loadExamples();
+  render();
+})();
+</script>
+</body>
+</html>
