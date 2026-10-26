@@ -1,0 +1,63 @@
+name: Update card list
+
+# Rebuilds the card list from Fabrary's card data (plus the-fab-cube for event cards
+# Fabrary doesn't list) and republishes index.html when anything has changed.
+on:
+  schedule:
+    - cron: "17 17 * * *" # daily, about 6am in Auckland
+  workflow_dispatch: # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-cards
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download Fabrary card data
+        run: |
+          mkdir -p /tmp/fabrary
+          cd /tmp/fabrary
+          npm pack @flesh-and-blood/cards --ignore-scripts --silent
+          tar xzf flesh-and-blood-cards-*.tgz
+          echo "FABRARY_VERSION=$(node -p "require('./package/package.json').version")" >> "$GITHUB_ENV"
+
+      - name: Download the-fab-cube card data
+        run: git clone --depth 1 https://github.com/the-fab-cube/flesh-and-blood-cards.git /tmp/fabcube
+
+      - name: Build the card list
+        run: |
+          python3 tools/fabrary_index.py /tmp/fabrary/package/dist/cards.js /tmp/cards-fabrary.json
+          python3 tools/make_index.py /tmp/fabcube/json/english /tmp/cards-fabcube.json
+          python3 tools/merge_lists.py /tmp/cards-fabrary.json /tmp/cards-fabcube.json tools/cards.json
+
+      - name: Rebuild the page if cards changed
+        id: rebuild
+        run: |
+          if git diff --quiet -- tools/cards.json; then
+            echo "No card changes."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            cd tools
+            python3 assemble.py "$(TZ=Pacific/Auckland date +%F)" ../index.html
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push
+        if: steps.rebuild.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tools/cards.json index.html
+          git commit -m "Update card list (Fabrary data ${FABRARY_VERSION})"
+          git push

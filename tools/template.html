@@ -257,7 +257,7 @@ select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid
         <button class="ghost" type="button" id="clearAll">Remove all cards</button>
         <span id="confirmClear" hidden><span class="hint">Remove every card?</span> <button type="button" id="confirmYes">Yes, remove</button> <button class="ghost" type="button" id="confirmNo">Cancel</button></span>
       </div>
-      <div class="dbline"><span id="dbInfo"></span><button type="button" class="linkish" id="dbUpdate">Check for new cards</button></div>
+      <div class="dbline"><span id="dbInfo"></span></div>
     </main>
 
     <aside class="panel" aria-label="Order">
@@ -346,104 +346,21 @@ select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid
   const IMG = (stem) => `https://content.fabrary.net/cards/${encodeURIComponent(stem)}.webp`;
   const IMG_ALT = (stem) => `https://legendstory-production-s3-public.s3.amazonaws.com/media/cards/large/${encodeURIComponent(stem)}.webp`;
   const TCG = (pid) => `https://tcgplayer-cdn.tcgplayer.com/product/${pid}_in_1000x1000.jpg`;
-  const RAW = "https://raw.githubusercontent.com/the-fab-cube/flesh-and-blood-cards/develop/json/english/";
   // Print size at 300 dpi: 822 x 1122 with bleed, card itself 744 x 1040.
   const PW = 822, PH = 1122, CW = 744, CH = 1040;
   const $ = (id) => document.getElementById(id);
 
   // ---------- card database ----------
   // Row: [name, pitch, typeText, arts:[[stem, label, tcgId, backStem?]], aliases[]]
-  let DB = [];
-  let dbDate = SNAPSHOT_DATE;
-  const norm = (s) => s.toLowerCase().replace(/&/g, " and ").replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
-  let searchKeys = [];
-  function setDB(rows, date) {
-    DB = rows; dbDate = date;
-    searchKeys = DB.map((r) => ({ n: norm(r[0]), a: (r[4] || []).map(norm) }));
-    $("dbInfo").textContent = `Card list: ${DB.length.toLocaleString("en-NZ")} cards, updated ${fmtDate(dbDate)}.`;
-  }
+  // The list is rebuilt daily from Fabrary's card data by the site's GitHub Action.
+  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/&/g, " and ").replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+  const DB = JSON.parse($("carddata").textContent);
+  const searchKeys = DB.map((r) => ({ n: norm(r[0]), a: (r[4] || []).map(norm) }));
   function fmtDate(iso) {
     const d = new Date(iso + "T12:00:00");
     return isNaN(d) ? iso : d.toLocaleDateString("en-NZ", { day: "numeric", month: "long", year: "numeric" });
   }
-  (function loadDB() {
-    let rows = JSON.parse($("carddata").textContent), date = SNAPSHOT_DATE;
-    try {
-      const saved = JSON.parse(localStorage.getItem("fabProxyDB") || "null");
-      if (saved && saved.date > date && Array.isArray(saved.rows)) { rows = saved.rows; date = saved.date; }
-    } catch (e) { /* storage unavailable */ }
-    setDB(rows, date);
-  })();
-
-  // Same logic as the snapshot builder, run in the page to refresh from the source data.
-  function buildIndex(cards, faces, artVars) {
-    const avn = Object.fromEntries(artVars.map((a) => [a.id, a.name]));
-    const stemOf = (p) => (p.image_url ? p.image_url.split("/").pop().replace(/\.[^.]+$/, "") : null);
-    const pstem = {};
-    for (const c of cards) for (const p of c.printings) pstem[p.unique_id] = stemOf(p);
-    const backOf = {}, backStems = new Set();
-    for (const x of faces) {
-      const f = pstem[x.front_unique_id], b = pstem[x.back_unique_id];
-      if (f && b && (x.is_DFC || b.endsWith("_BACK"))) { backOf[f] = b; backStems.add(b); }
-    }
-    const pref = (s) => (s.startsWith("U-") ? 1 : 0) + (/-(RF|CF|GF|MV)$/.test(s.replace("_BACK", "")) ? 2 : 0);
-    const out = [], backOnly = [];
-    for (const c of cards) {
-      const arts = new Map();
-      for (const p of c.printings) {
-        const s = stemOf(p); if (!s) continue;
-        const key = p.id + "|" + (p.art_variations || []).join(",");
-        const cand = { sc: pref(s), s, p };
-        if (!arts.has(key) || cand.sc < arts.get(key).sc) arts.set(key, cand);
-      }
-      if (!arts.size) continue;
-      const vals = [...arts.values()];
-      if (vals.every((v) => backStems.has(v.s))) { backOnly.push([c, vals]); continue; }
-      // back-face images belong on the back, not in the list of front arts
-      const fronts = vals.filter((v) => !backStems.has(v.s));
-      vals.length = 0; vals.push(...fronts);
-      // standard art first, and single-sided printings before double-sided ones
-      const key = (v) => (v.p.art_variations.length ? 2 : 0) + (backOf[v.s] ? 1 : 0);
-      vals.sort((a, b) => key(a) - key(b));
-      const entries = vals.map(({ s, p }) => {
-        let label = p.id;
-        if (p.art_variations.length) label += " · " + p.art_variations.map((a) => avn[a] || a).join(", ");
-        const tid = /^\d+$/.test(p.tcgplayer_product_id || "") ? parseInt(p.tcgplayer_product_id, 10) : 0;
-        const e = [s, label, tid];
-        if (backOf[s]) e.push(backOf[s]);
-        return e;
-      });
-      out.push([c.name, /^\d$/.test(c.pitch || "") ? parseInt(c.pitch, 10) : 0, c.type_text || "", entries, []]);
-    }
-    const stemIdx = {};
-    out.forEach((r, i) => r[3].forEach((e) => { if (e[3]) stemIdx[e[3]] = i; }));
-    for (const [c, vals] of backOnly) {
-      for (const v of vals) { const i = stemIdx[v.s]; if (i !== undefined) { if (!out[i][4].includes(c.name)) out[i][4].push(c.name); break; } }
-    }
-    out.sort((a, b) => a[0].toLowerCase() < b[0].toLowerCase() ? -1 : a[0].toLowerCase() > b[0].toLowerCase() ? 1 : a[1] - b[1]);
-    return out;
-  }
-
-  async function updateDB() {
-    const btn = $("dbUpdate");
-    btn.disabled = true; btn.textContent = "Checking…";
-    try {
-      const commit = await fetch("https://api.github.com/repos/the-fab-cube/flesh-and-blood-cards/commits?per_page=1&sha=develop").then((r) => r.json());
-      const date = (commit[0]?.commit?.committer?.date || "").slice(0, 10);
-      if (date && date <= dbDate) { btn.textContent = "Already up to date"; return; }
-      btn.textContent = "Downloading card list (about 25 MB)…";
-      const [cards, faces, artVars] = await Promise.all(["card.json", "card-face-association.json", "art-variation.json"].map((f) => fetch(RAW + f).then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })));
-      const rows = buildIndex(cards, faces, artVars);
-      const d = date || new Date().toISOString().slice(0, 10);
-      setDB(rows, d);
-      try { localStorage.setItem("fabProxyDB", JSON.stringify({ date: d, rows })); } catch (e) { /* too big or blocked; fine for this visit */ }
-      btn.textContent = "Updated";
-    } catch (e) {
-      btn.textContent = "Couldn't check. Try again later";
-    } finally {
-      setTimeout(() => { btn.disabled = false; btn.textContent = "Check for new cards"; }, 4000);
-    }
-  }
+  $("dbInfo").textContent = `Card list: ${DB.length.toLocaleString("en-NZ")} cards, updated ${fmtDate(SNAPSHOT_DATE)}. New cards are added automatically.`;
 
   // ---------- search ----------
   function search(query, limit = 10) {
@@ -1081,7 +998,6 @@ select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid
   $("confirmNo").addEventListener("click", () => { $("confirmClear").hidden = true; $("clearAll").hidden = false; });
   $("confirmYes").addEventListener("click", () => { cards.forEach(revoke); cards = []; $("confirmClear").hidden = true; $("clearAll").hidden = false; setStatus(""); render(); });
   $("download").addEventListener("click", doDownload);
-  $("dbUpdate").addEventListener("click", updateDB);
 
   // Example cards so the first view shows how it works.
   function loadExamples() {
@@ -1092,7 +1008,7 @@ select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid
   }
 
   // Test hook (used only for automated checks)
-  window.__fab = { search, lookup, parseLine, addDecklist, toPrintFile, fetchArt, buildIndex, get cards() { return cards; }, buildZip, DB: () => DB };
+  window.__fab = { search, lookup, parseLine, addDecklist, toPrintFile, fetchArt, get cards() { return cards; }, buildZip, DB: () => DB };
 
   showCardback();
   loadDefaultBack();

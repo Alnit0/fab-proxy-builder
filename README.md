@@ -18,19 +18,22 @@ Open the site, add cards, click **Download order (.zip)**, then follow the steps
 
 ## Updating the card list
 
-The page has a **Check for new cards** link that pulls the latest list in the browser. To bake a newer list into `index.html` instead:
+The card list updates itself. A GitHub Action (`.github/workflows/update-cards.yml`) runs every morning, rebuilds the list from Fabrary's card data, and republishes `index.html` if any cards changed. To run it straight away, open the **Actions** tab, choose **Update card list**, then **Run workflow**.
+
+To rebuild by hand:
 
 ```bash
-git clone --depth 1 https://github.com/the-fab-cube/flesh-and-blood-cards.git
-python3 tools/make_index.py flesh-and-blood-cards/json/english tools/cards.json
+npm pack @flesh-and-blood/cards --ignore-scripts && tar xzf flesh-and-blood-cards-*.tgz
+git clone --depth 1 https://github.com/the-fab-cube/flesh-and-blood-cards.git fabcube
+python3 tools/fabrary_index.py package/dist/cards.js /tmp/fabrary.json
+python3 tools/make_index.py fabcube/json/english /tmp/fabcube.json
+python3 tools/merge_lists.py /tmp/fabrary.json /tmp/fabcube.json tools/cards.json
 cd tools && python3 assemble.py YYYY-MM-DD ../index.html
 ```
 
-Use the card data's last update date for `YYYY-MM-DD`.
-
 ## Credits
 
-- Card data: [the-fab-cube/flesh-and-blood-cards](https://github.com/the-fab-cube/flesh-and-blood-cards)
+- Card data: [Fabrary](https://github.com/fabrary/cards), with event cards from [the-fab-cube/flesh-and-blood-cards](https://github.com/the-fab-cube/flesh-and-blood-cards)
 - Card images: [Fabrary](https://fabrary.net)
 - Order automation: [MPC Autofill](https://github.com/chilli-axe/mpc-autofill)
 
