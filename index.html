@@ -109,6 +109,17 @@ details.box .row { display: flex; gap: 10px; align-items: center; margin-top: 8p
 
 .listhead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .listhead .meta { color: var(--muted); font-size: .92rem; }
+/* Service problem banner */
+.alert { border: 2px solid var(--bad); background: var(--bad-soft); color: var(--fg); border-radius: var(--radius); padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.alert .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.alert h2 { font-size: 1.35rem; color: var(--bad); }
+.alert .code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-weight: 700; font-size: .95rem; background: var(--bad); color: var(--surface); padding: 3px 10px; border-radius: 6px; letter-spacing: .04em; }
+.alert p { max-width: 70ch; }
+.alert .small { font-size: .88rem; color: var(--muted); }
+.alert.warn { border-color: var(--warn); background: var(--warn-soft); }
+.alert.warn h2 { color: var(--warn); }
+.alert.warn .code { background: var(--warn); }
+
 .examplenote { background: var(--accent-soft); border-radius: 8px; padding: 10px 14px; font-size: .95rem; display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; }
 
 .cards { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 0; padding: 0; }
@@ -199,6 +210,12 @@ select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid
     <h1>FAB Proxy Order Builder</h1>
     <p class="lede">Type a card name, pick the art, set how many. You get one zip with print-ready images and an order file for the MPC Autofill program.</p>
   </header>
+
+  <section class="alert" id="serviceAlert" role="alert" hidden>
+    <div class="head"><h2 id="alertTitle"></h2><span class="code" id="alertCode"></span></div>
+    <p id="alertText"></p>
+    <p class="small" id="alertHelp"></p>
+  </section>
 
   <ol class="steps" aria-label="How it works">
     <li><span class="n">1</span><div><b>Find your cards</b><span>Type a name, or paste a decklist.</span></div></li>
@@ -939,7 +956,16 @@ select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid
       if (res.failed) {
         res.failed.forEach((c) => (c.failed = true));
         render();
-        setStatus(`Couldn't get art for ${res.failed.size} card${res.failed.size === 1 ? "" : "s"} (marked in red). Choose other art or use your own image, then try again.`, "err");
+        const dbCards = cards.filter((c) => c.kind === "db" && !c.own).length;
+        const allArtFailed = dbCards > 1 && [...res.failed].filter((c) => c.kind === "db" && !c.own).length === dbCards;
+        if (allArtFailed) {
+          // Every database card failed: most likely the image service, not the cards. Re-check and explain.
+          const code = await checkImageService();
+          setStatus(`Couldn't get any card art${code ? ` (error ${code})` : ""}. See the message at the top of the page.`, "err");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else {
+          setStatus(`Couldn't get art for ${res.failed.size} card${res.failed.size === 1 ? "" : "s"} (marked in red). Choose other art or use your own image, then try again.`, "err");
+        }
         return;
       }
       const a = document.createElement("a");
@@ -1010,10 +1036,74 @@ select { font: inherit; padding: 9px 10px; border-radius: 8px; border: 1px solid
   // Test hook (used only for automated checks)
   window.__fab = { search, lookup, parseLine, addDecklist, toPrintFile, fetchArt, get cards() { return cards; }, buildZip, DB: () => DB };
 
+  // ---------- service check ----------
+  // Runs when the page opens. Tests the same two things the page relies on:
+  // that card images can be shown, and that they can be downloaded into the zip.
+  // Add ?test-error=FAB-IMG-01 (or -02, FAB-NET-01) to the address to preview a message.
+  const TEST_STEM = "WTR001";
+  const ALERTS = {
+    "FAB-IMG-01": {
+      kind: "bad",
+      title: "Card images aren't loading",
+      text: "Fabrary's image server isn't responding, so card art won't show or download. You can still build an order by adding your own images with “Use my own images instead”.",
+      help: "This is usually temporary. If it's still happening tomorrow, send this error code to whoever shared this page with you.",
+    },
+    "FAB-IMG-02": {
+      kind: "bad",
+      title: "Card art can't be downloaded",
+      text: "Fabrary's image server has stopped letting other websites download its images. Card art may still show on screen, but it can't be put into the order zip. You can still use your own images with “Use my own images instead”.",
+      help: "This needs a fix to the site. Send this error code to whoever shared this page with you.",
+    },
+    "FAB-NET-01": {
+      kind: "warn",
+      title: "You seem to be offline",
+      text: "This page needs an internet connection to show card art and build the order zip.",
+      help: "Check your connection, then reload the page.",
+    },
+  };
+  function showAlert(code) {
+    const a = ALERTS[code];
+    if (!a) return;
+    const box = $("serviceAlert");
+    box.className = "alert" + (a.kind === "warn" ? " warn" : "");
+    $("alertTitle").textContent = a.title;
+    $("alertCode").textContent = "Error " + code;
+    $("alertText").textContent = a.text;
+    $("alertHelp").textContent = a.help;
+    box.hidden = false;
+  }
+  function imageLoads(url, cors) {
+    return new Promise((res) => {
+      const i = new Image();
+      if (cors) i.crossOrigin = "anonymous";
+      const t = setTimeout(() => res(false), 12000);
+      i.onload = () => { clearTimeout(t); res(i.naturalWidth > 0); };
+      i.onerror = () => { clearTimeout(t); res(false); };
+      i.src = url;
+    });
+  }
+  async function checkImageService() {
+    const forced = new URLSearchParams(location.search).get("test-error");
+    if (forced && ALERTS[forced.toUpperCase()]) { showAlert(forced.toUpperCase()); return forced.toUpperCase(); }
+    const url = IMG(TEST_STEM) + "?check=" + Date.now();
+    try {
+      const r = await fetch(url, { mode: "cors", cache: "no-store" });
+      if (r.ok && (await r.blob()).size > 0) { $("serviceAlert").hidden = true; return null; }
+    } catch (e) { /* fall through to work out why */ }
+    let code;
+    if (await imageLoads(url + "&plain", false)) code = "FAB-IMG-02"; // shows, but blocked for downloads
+    else if (!navigator.onLine || !(await imageLoads(`https://www.google.com/favicon.ico?check=${Date.now()}`, false))) code = "FAB-NET-01";
+    else code = "FAB-IMG-01"; // internet works, Fabrary doesn't
+    showAlert(code);
+    return code;
+  }
+  window.addEventListener("online", () => checkImageService());
+
   showCardback();
   loadDefaultBack();
   loadExamples();
   render();
+  checkImageService();
 })();
 </script>
 </body>

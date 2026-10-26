@@ -61,3 +61,23 @@ jobs:
           git add tools/cards.json index.html
           git commit -m "Update card list (Fabrary data ${FABRARY_VERSION})"
           git push
+
+      # Fails the run (and GitHub emails the repo owner) if Fabrary's images stop
+      # working for the site. Same error codes as the banner on the page.
+      - name: Check Fabrary's image server
+        run: |
+          url="https://content.fabrary.net/cards/WTR001.webp?check=$(date +%s)"
+          headers=$(curl -sS -D - -o /tmp/test-image -H "Origin: https://alnit0.github.io" --max-time 30 "$url" || true)
+          status=$(echo "$headers" | tr -d '\r' | awk 'toupper($1) ~ /^HTTP/ {code=$2} END {print code}')
+          allow=$(echo "$headers" | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin" {print $2}')
+          size=$(stat -c %s /tmp/test-image 2>/dev/null || echo 0)
+          echo "Status: ${status:-none}, size: ${size} bytes, allowed origin: ${allow:-none}"
+          if [ "$status" != "200" ] || [ "$size" -lt 1000 ]; then
+            echo "::error title=FAB-IMG-01::Fabrary's image server isn't returning card images (status ${status:-none}). Card art won't show or download on the site."
+            exit 1
+          fi
+          if [ "$allow" != "*" ] && [ "$allow" != "https://alnit0.github.io" ]; then
+            echo "::error title=FAB-IMG-02::Fabrary's image server no longer allows other websites to download images. Card art can't go into order zips."
+            exit 1
+          fi
+          echo "Fabrary images OK."
